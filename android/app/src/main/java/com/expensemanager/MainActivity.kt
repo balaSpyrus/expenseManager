@@ -1,4 +1,4 @@
-package com.expensemanager
+package com.rn.expensemanager
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

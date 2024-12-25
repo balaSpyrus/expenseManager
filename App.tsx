@@ -5,9 +5,10 @@
  * @format
  */
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
+  Button,
+  Image,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -17,50 +18,81 @@ import {
   View,
 } from 'react-native';
 
+import auth, {FirebaseAuthTypes} from '@react-native-firebase/auth';
 import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+  GoogleSignin,
+  GoogleSigninButton,
+} from '@react-native-google-signin/google-signin';
+import {Colors} from 'react-native/Libraries/NewAppScreen';
+import WebView from 'react-native-webview';
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+// Configure Google Sign-In
+GoogleSignin.configure({
+  webClientId:
+    '654999969830-2mgqggf9i84g9ujd34eqloum771nq0oa.apps.googleusercontent.com', // Get this from Firebase Console
+  offlineAccess: true, // If you need a refresh token
+});
 
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
+  const [user, setUser] = useState<FirebaseAuthTypes.User | null>();
 
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
   };
+
+  const onLogout = async () => {
+    try {
+      // Sign out from Firebase
+      await auth().signOut();
+
+      // Revoke Google Sign-In session
+      await GoogleSignin.revokeAccess();
+      await GoogleSignin.signOut();
+
+      console.log('User signed out successfully');
+    } catch (error) {
+      console.error('Error signing out: ', error);
+    }
+  };
+
+  const onGoogleButtonPress = async () => {
+    try {
+      await GoogleSignin.hasPlayServices({showPlayServicesUpdateDialog: true});
+      // Get the users ID token
+      const signInResult = await GoogleSignin.signIn();
+      console.log(JSON.stringify(signInResult, null, 2));
+      // Try the new style of google-sign in result, from v13+ of that module
+      let idToken = signInResult.data?.idToken;
+      if (!idToken) {
+        // if you are using older versions of google-signin, try old style result
+        idToken = (signInResult as any).idToken;
+      }
+      if (!idToken) {
+        throw new Error('No ID token found');
+      }
+
+      // Create a Google credential with the token
+      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+
+      // Sign-in the user with the credential
+      return auth().signInWithCredential(googleCredential);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // Handle user state changes
+  const onAuthStateChanged = React.useCallback((userData: typeof user) => {
+    console.log('onAuthStateChanged', user);
+    setUser(userData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const subscriber = auth().onAuthStateChanged(onAuthStateChanged);
+    return subscriber; // unsubscribe on unmount
+  }, [onAuthStateChanged]);
 
   return (
     <SafeAreaView style={backgroundStyle}>
@@ -71,25 +103,35 @@ function App(): React.JSX.Element {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
+        <View style={styles.container}>
+          {user ? (
+            <>
+              <Image
+                source={{uri: user.photoURL ?? ''}}
+                style={styles.profileImg}
+              />
+              <Text>Welcome {user.displayName}</Text>
+              <Text>{user.email}</Text>
+              <Text>{user.providerId}</Text>
+              <Text>{user.metadata.creationTime}</Text>
+              <Text>{user.metadata.lastSignInTime}</Text>
+              <WebView
+                source={{
+                  uri: 'https://expense-manager-balaspyrus-projects.vercel.app/dashboard',
+                }}
+                style={{
+                  width: 500,
+                  height: 1000,
+                  backgroundColor: 'black',
+                  overflow: 'scroll',
+                }}
+              />
+
+              <Button title="Logout" onPress={onLogout} />
+            </>
+          ) : (
+            <GoogleSigninButton onPress={onGoogleButtonPress} />
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -97,21 +139,17 @@ function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  profileImg: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
+  container: {
+    backgroundColor: Colors.white,
+    gap: 10,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 
